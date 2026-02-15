@@ -30,10 +30,13 @@ def get_api_token():
 
 
 # --- Configuration ---
-API_URL = "https://api-inference.huggingface.co/models/"
-MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3"
+API_URL = "https://router.huggingface.co/v1/chat/completions"
+MODEL_ID = "Qwen/Qwen2.5-72B-Instruct"
 TOKEN = get_api_token()
-HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+headers = {
+    "Authorization": f"Bearer {TOKEN}",
+    "Content-Type": "application/json"
+}
 
 
 # =====================================================================
@@ -51,7 +54,27 @@ HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 #   - The generated text is at result[0]["generated_text"]
 # =====================================================================
 
-prompt = "Explain what a vector database is in one paragraph:"
+# prompt = "Explain what a vector database is in one paragraph:"
+
+
+payload = {
+    "model": MODEL_ID,
+    "messages": [
+        {
+            "role": "user",
+            "content": "Explain what a vector database is in one paragraph:"
+        }
+    ],
+    "max_tokens": 150,
+    "temperature": 0.7
+}
+response = requests.post(API_URL, headers=headers, json=payload)
+response.raise_for_status()
+
+result = response.json()
+
+print("Generated Text:")
+print(result["choices"][0]["message"]["content"])
 
 # Your code here:
 # response = requests.post(...)
