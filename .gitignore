@@ -1,0 +1,8 @@
+# .gitignore
+.env
+.env.local
+*.env
+.venv/
+.cache/
+__pycache__/
+*.py[cod]

@@ -20,12 +20,12 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=os.getenv("GEMINI_API_TOKEN"),base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
 
 def get_ai_response_with_tools(
     messages: List[Dict[str, Any]],
-    model: str = "gpt-4o-mini"
+    model: str = "gemini-1.5-flash"
 ) -> Dict[str, Any]:
     """
     Sends messages to OpenAI, handling tool calls if returned.
@@ -72,7 +72,11 @@ def get_ai_response_with_tools(
         #     "content": response_message.content,
         #     "tool_calls": response_message.tool_calls
         # })
-
+        messages.append({
+            "role": "assistant",
+            "content": response_message.content,
+            "tool_calls": [tc.model_dump() for tc in response_message.tool_calls]
+        })
         # TODO: Loop through each tool_call and:
         # 1. Extract tool_name from tool_call.function.name
         # 2. Parse arguments with json.loads(tool_call.function.arguments)
@@ -85,22 +89,47 @@ def get_ai_response_with_tools(
         #        "content": json.dumps(result)
         #    })
         # 5. Collect results in tool_results list
-
+        for tool_call in response_message.tool_calls:
+            tool_name = tool_call.function.name
+        
+            
+            try:
+                arguments = json.loads(tool_call.function.arguments)
+                logger.info(f"Executing {tool_name} with args: {arguments}")
+                
+                result = execute_tool(tool_name, arguments)
+            except json.JSONDecodeError:
+                result = {"success": False, "error": "Invalid JSON arguments"}
+                
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "name": tool_name,
+                "content": json.dumps(result)
+            })
+            tool_results.append(result)        
+        
         # TODO: Make the second API call with updated messages
         # second_response = client.chat.completions.create(
         #     model=model, messages=messages, temperature=0.1
         # )
         # response_text = second_response.choices[0].message.content
+        
 
-        response_text = "Tool calling not yet implemented."  # Remove this line
-    else:
-        # No tool calls — direct text response
-        response_text = response_message.content
+        second_response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.1
+        )
+        response_text = second_response.choices[0].message.content
+    # else:
+    #     # No tool calls — direct text response
+    #     response_text = response_message.content
 
-    return {
-        "response_text": response_text,
-        "tool_results": tool_results
-    }
+    # return {
+    #     "response_text": response_text,
+    #     "tool_results": tool_results
+    # }
 
 
 # =============================================================================

@@ -11,6 +11,7 @@ import json
 import logging
 import functools
 from typing import Dict, Any
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,22 @@ def execute_calculation(operation: str, operand_a: float, operand_b: float) -> D
         # - "divide": operand_a / operand_b (handle division by zero!)
         # - "pow": operand_a ** operand_b
         # - anything else: set error to "Unsupported operation: {operation}"
+        
+        if operation == "add":
+            result = operand_a + operand_b
+        elif operation == "subtract":
+            result = operand_a - operand_b
+        elif operation == "multiply":
+            result = operand_a * operand_b
+        elif operation == "divide":
+            if operand_b == 0:
+                error = "Division by zero is not allowed."
+            else:
+                result = operand_a / operand_b
+        elif operation == "pow":
+            result = operand_a ** operand_b
+        else:
+            error = f"Unsupported operation: {operation}"
         pass
     except Exception as e:
         error = f"Calculation error: {str(e)}"
@@ -132,6 +149,21 @@ def resilient_api_call(max_retries: int = 2, timeout_seconds: int = 10):
             #
             # On final failure, return:
             #   {"success": False, "error": "Service unavailable after retries"}
+            
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    wait_time = 2 ** attempt  
+                    logger.warning(f"Attempt {attempt + 1} failed. Retrying in {wait_time}s... Error: {e}")
+                    if attempt < max_retries:
+                        time.sleep(wait_time)
+            
+            return {"success": False, "error": "Service unavailable after retries"}
+
             try:
                 return func(*args, **kwargs)
             except Exception as e:
