@@ -18,7 +18,7 @@ You are given a **broken agent** that enters infinite loops and wastes tokens. Y
 
 ## Prerequisites
 
-- `pip install -r requirements.txt`
+- `uv pip install -r requirements.txt`
 - A valid API key in `.env` (e.g., `OPENAI_API_KEY=sk-...`)
 
 ## Files

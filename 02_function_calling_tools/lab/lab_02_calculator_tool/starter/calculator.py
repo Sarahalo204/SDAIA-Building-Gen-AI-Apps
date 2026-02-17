@@ -21,36 +21,46 @@ logger = logging.getLogger(__name__)
 # This schema tells the LLM what the tool does and how to call it.
 # The description is critical — it's a prompt to the model.
 
+from pydantic import BaseModel, Field
+from enum import Enum
+
+# =============================================================================
+# Step 1: Define the Tool Schema
+# =============================================================================
+# Using Pydantic is the modern standard for defining tool schemas.
+
+class Operation(str, Enum):
+    ADD = "add"
+    SUBTRACT = "subtract"
+    MULTIPLY = "multiply"
+    DIVIDE = "divide"
+    POW = "pow"
+
+class CalculationRequest(BaseModel):
+    """
+    Executes a basic arithmetic or exponentiation operation.
+    Use for any math in user questions: percentages, growth rates,
+    compound interest, splits, or simple arithmetic.
+    Example: For 'What is 15% of 200?', use operation='multiply',
+    operand_a=200, operand_b=0.15.
+    """
+    operation: Operation = Field(
+        description="The arithmetic operation. 'pow' calculates operand_a to the power of operand_b."
+    )
+    operand_a: float = Field(
+        description="The first operand (base for 'pow')."
+    )
+    operand_b: float = Field(
+        description="The second operand (exponent for 'pow'). For division, this is the divisor."
+    )
+
+# Structured Output / Tool Schema
 CALCULATOR_SCHEMA = {
     "type": "function",
     "function": {
         "name": "execute_calculation",
-        "description": (
-            "Executes a basic arithmetic or exponentiation operation. "
-            "Use for any math in user questions: percentages, growth rates, "
-            "compound interest, splits, or simple arithmetic. "
-            "Example: For 'What is 15% of 200?', use operation='multiply', "
-            "operand_a=200, operand_b=0.15."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": ["add", "subtract", "multiply", "divide", "pow"],
-                    "description": "The arithmetic operation. 'pow' calculates operand_a to the power of operand_b."
-                },
-                "operand_a": {
-                    "type": "number",
-                    "description": "The first operand (base for 'pow')."
-                },
-                "operand_b": {
-                    "type": "number",
-                    "description": "The second operand (exponent for 'pow'). For division, this is the divisor."
-                }
-            },
-            "required": ["operation", "operand_a", "operand_b"]
-        }
+        "description": CalculationRequest.__doc__.strip(),
+        "parameters": CalculationRequest.model_json_schema()
     }
 }
 

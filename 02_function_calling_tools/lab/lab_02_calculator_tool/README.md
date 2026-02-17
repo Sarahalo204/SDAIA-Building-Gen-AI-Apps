@@ -14,7 +14,7 @@ Build a complete tool-calling agent that can perform calculations. You'll implem
 ## Setup
 
 ```bash
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 cp .env.example .env
 # Edit .env and add your OpenAI API key
 ```

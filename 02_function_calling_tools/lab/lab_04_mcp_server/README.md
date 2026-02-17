@@ -9,13 +9,13 @@ Wrap your Tool Registry in a **Model Context Protocol (MCP)** server using FastM
 ## Prerequisites
 
 - Python 3.10+
-- `pip install mcp`
+- `uv pip install mcp`
 - Lab 3 solutions (or your own completed Lab 3 code)
 
 ## Setup
 
 ```bash
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 **Important**: This lab imports from Lab 3. Either:

@@ -13,7 +13,7 @@ Build a multi-agent system where specialized agents — **Researcher**, **Analys
 
 ## Prerequisites
 
-- `pip install -r requirements.txt`
+- `uv pip install -r requirements.txt`
 - A valid API key in `.env` (e.g., `OPENAI_API_KEY=sk-...`)
 
 ## Files

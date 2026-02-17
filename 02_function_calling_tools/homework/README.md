@@ -14,7 +14,7 @@ Build a `CurrencyConverterTool` that integrates with the full tool stack you bui
 ## Requirements
 
 - Python 3.10+
-- `pip install mcp`
+- `uv pip install mcp`
 - Lab 3 solution files (base.py, registry.py, manager.py)
 
 ## Setup
@@ -26,7 +26,7 @@ Copy the following files from Lab 3 solutions into this directory:
 
 Then:
 ```bash
-pip install mcp
+uv pip install mcp
 ```
 
 ## Files

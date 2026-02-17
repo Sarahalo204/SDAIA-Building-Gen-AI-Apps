@@ -14,7 +14,8 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from calculator import get_tool_schemas, execute_tool
+from pydantic import ValidationError
+from calculator import get_tool_schemas, execute_tool, CalculationRequest
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -126,10 +127,49 @@ def get_ai_response_with_tools(
     #     # No tool calls — direct text response
     #     response_text = response_message.content
 
-    # return {
-    #     "response_text": response_text,
-    #     "tool_results": tool_results
-    # }
+        # Append the assistant's message (with tool_calls) to messages
+        messages.append(response_message)
+
+        for tool_call in response_message.tool_calls:
+            tool_name = tool_call.function.name
+            raw_arguments = tool_call.function.arguments
+            
+            try:
+                if tool_name == "execute_calculation":
+                    # Pydantic validation
+                    request = CalculationRequest.model_validate_json(raw_arguments)
+                    # Execute with validated arguments
+                    result = execute_tool(tool_name, request.model_dump())
+                else:
+                    result = {"success": False, "error": f"Unknown tool: {tool_name}"}
+            except ValidationError as e:
+                result = {"success": False, "error": f"Validation Error: {e}"}
+            except json.JSONDecodeError:
+                 result = {"success": False, "error": "Invalid JSON arguments"}
+
+            # Append tool result
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(result)
+            })
+            tool_results.append(result)
+
+        # Second API call: send updated messages → get final answer
+        second_response = client.chat.completions.create(
+            model=model, messages=messages, temperature=0.1
+        )
+        response_text = second_response.choices[0].message.content
+
+    else:
+        # No tool calls — direct text response
+        response_text = response_message.content
+
+
+    return {
+        "response_text": response_text,
+        "tool_results": tool_results
+    }
 
 
 # =============================================================================
