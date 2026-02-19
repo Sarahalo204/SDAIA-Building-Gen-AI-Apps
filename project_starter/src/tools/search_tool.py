@@ -1,9 +1,10 @@
 import logging
 import socket
 from urllib.parse import urlparse
-
+import ipaddress
 import requests
 from bs4 import BeautifulSoup
+import os
 
 from src.tools.registry import registry
 
@@ -22,97 +23,106 @@ def validate_url(url: str) -> bool:
         hostname = parsed.hostname
         if not hostname:
             return False
-
-        # Resolve hostname to IP
         try:
             ip_address = socket.gethostbyname(hostname)
-        except socket.gaierror:
-            return False # Could not resolve
+            ip = ipaddress.ip_address(ip_address)
 
-        # Simple check for private ranges (10.x.x.x, 192.168.x.x, 172.16.x.x, 127.x.x.x)
-        # In a real prod env, use the `ipaddress` module for strict checking
-        parts = ip_address.split('.')
-        if parts[0] == '10': return False
-        if parts[0] == '192' and parts[1] == '168': return False
-        if parts[0] == '172' and 16 <= int(parts[1]) <= 31: return False
-        if parts[0] == '127': return False
-        if ip_address == "0.0.0.0": return False
+            if ip.is_private or ip.is_loopback or ip.is_reserved:
+                return False
+
+        except Exception:
+            return False
 
         return True
+
     except Exception:
         return False
 
+
 @registry.register("search_web", "Search the web for a query. Returns a list of results with title, link, and snippet.", category="research")
 # NOTE: The decorator above will work once you implement the registry!
-def search_web(query: str, max_results: int = 5) -> list[dict]:
+def search_web(query: str, max_results: int = 5) -> str:
     """
     Search the web using DuckDuckGo (HTML).
     """
-    url = "https://html.duckduckgo.com/html/"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    api_key = os.getenv("TAVILY_API_KEY")
+    if not api_key:
+        return "Error: TAVILY_API_KEY not set in environment variables."
+
+    url = "https://api.tavily.com/search"
+
+    payload = {
+        "api_key": api_key,
+        "query": query,
+        "search_depth": "advanced",
+        "max_results": max_results,
+        "include_answer": False
+    }
 
     try:
-        response = requests.post(url, data={"q": query}, headers=headers, timeout=10)
+        logger.info(f"Searching Tavily for: '{query}'")
+
+        response = requests.post(url, json=payload, timeout=15)
         response.raise_for_status()
+        data = response.json()
+
+        formatted_results = []
+        for item in data.get("results", []):
+            link = item.get("url")
+            if link and validate_url(link):
+                result_str = (
+                    f"Title: {item.get('title')}\n"
+                    f"Link: {link}\n"
+                    f"Snippet: {item.get('content')}\n"
+                )
+                formatted_results.append(result_str)
+
+        logger.info(f"Tavily returned {len(formatted_results)} results.")
+
+        if not formatted_results:
+            return "No relevant results found."
+            
+        return "\n---\n".join(formatted_results)
+
     except Exception as e:
-        logger.error(f"Search request failed: {e}")
-        # Return empty list gracefully instead of crashing the agent
-        return [{"title": "Error", "link": "", "snippet": f"Search failed: {str(e)}"}]
+        logger.error(f"Tavily search failed: {e}")
+        return f"Error performing search: {str(e)}"
 
-    logger.info(f"Searching web for: '{query}'")
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    results = []
-    for result in soup.find_all("div", class_="result", limit=max_results):
-        title_tag = result.find("a", class_="result__a")
-        snippet_tag = result.find("a", class_="result__snippet")
-
-        if title_tag and snippet_tag:
-            link = title_tag["href"]
-            # Basic validation on the result link too
-            if validate_url(link):
-                results.append({
-                    "title": title_tag.get_text(strip=True),
-                    "link": link,
-                    "snippet": snippet_tag.get_text(strip=True)
-                })
-
-    logger.info(f"Search returned {len(results)} results for '{query}'")
-    if not results:
-        logger.warning(f"No results found for '{query}' (Raw response length: {len(response.text)})")
-
-    return results
 
 @registry.register("read_webpage", "Read the content of a webpage. Returns the text content.", category="research")
 # NOTE: The decorator above will work once you implement the registry!
 def read_webpage(url: str) -> str:
     """Read and extract text from a URL."""
+    
     if not validate_url(url):
-        return "Error: Invalid or restricted URL. Access to local/private networks is blocked."
+        return "Error: Invalid or restricted URL. Access blocked."
 
     try:
-        if "example.com" in url:
-             return f"Simulated content for {url}."
-
         logger.info(f"Reading webpage: {url}")
+
         headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
-        # Remove script and style elements
-        for script in soup(["script", "style"]):
-            script.decompose()
+
+        # Remove unnecessary elements
+        for element in soup(["script", "style", "noscript"]):
+            element.decompose()
 
         text = soup.get_text(separator="\n")
-        # Clean up whitespace
+
+        # Clean whitespace
         lines = (line.strip() for line in text.splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = '\n'.join(chunk for chunk in chunks if chunk)
+        clean_text = "\n".join(chunk for chunk in chunks if chunk)
 
-        content = text[:10000]  # Truncate to avoid context overflow
-        logger.info(f"Read {len(content)} chars from {url}")
+        content = clean_text[:10000] 
+        logger.info(f"Read {len(content)} characters from {url}")
+
         return content
 
     except Exception as e:
-        return f"Error reading {url}: {e}"
+        logger.error(f"Error reading {url}: {e}")
+        return f"Error reading {url}: {str(e)}"

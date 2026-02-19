@@ -45,8 +45,8 @@ class Tool:
                     "properties": schema.get("properties", {}),
                     "required": schema.get("required", []),
                     "additionalProperties": False,
-                },
-                "strict": True
+                }
+                # "strict": True
             },
         }
 

@@ -6,3 +6,10 @@ requests
 structlog
 litellm
 tenacity
+chromadb 
+sentence-transformers
+# pypdf
+langchain-text-splitters
+ipaddress
+pdfplumber
+streamlit

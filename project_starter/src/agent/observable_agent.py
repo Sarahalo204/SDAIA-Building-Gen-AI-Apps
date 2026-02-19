@@ -13,6 +13,7 @@ from src.observability.tracer import AgentStep, AgentTracer, ToolCallRecord
 from src.tools.registry import registry
 
 logger = structlog.get_logger()
+DEFAULT_MODEL = os.getenv("MODEL_NAME", "openrouter/google/gemini-2.0-flash-001")
 
 class ObservableAgent:
     """
@@ -24,34 +25,34 @@ class ObservableAgent:
     """
     def __init__(
         self,
-        model: str ="gemini/gemini-3-flash-preview",
+        model: str =DEFAULT_MODEL,
         max_steps: int = 10,
         agent_name: str = "ObservableAgent",
         verbose: bool = True,
         system_prompt: str = """
         ### Role
-        You are an advanced AI Assistant powered by Gemini, designed to be autonomous, accurate, and resourceful. You operate as a "ReAct" agent (Reasoning + Acting), capable of solving complex problems by breaking them down into logical steps.
+        You are an advanced AI Assistant designed to be autonomous, accurate, and resourceful. You operate as a "ReAct" agent (Reasoning + Acting), capable of solving complex problems by breaking them down into logical steps.
 
         ### Context
-        You have access to a specific set of external tools (registered in your system). You are operating in a production environment where your actions, reasoning steps, and costs are strictly monitored. Users rely on you for factual, up-to-date information that goes beyond your training data.
+        You have access to a specific set of external tools (registered in your system). You are operating in a production environment where your actions, reasoning steps, and costs are strictly monitored.
 
         ### Task
-        1.  **Analyze**: Deeply understand the user's intent and identify what information is missing.
-        2.  **Reason**: Formulate a step-by-step plan to retrieve the necessary information.
-        3.  **Act**: Execute the available tools (e.g., 'search_web', 'read_webpage') to gather evidence.
-        4.  **Synthesize**: Combine the tool outputs to construct a comprehensive, well-cited, and direct answer.
+        1.  **Analyze**: Deeply understand the user's intent.
+        2.  **Reason**: Formulate a step-by-step plan to retrieve necessary information.
+        3.  **Act**: Execute the available tools to gather evidence.
+        4.  **Synthesize**: Combine the tool outputs to construct a comprehensive answer.
 
         ### Constraints
-        -   **Tool Usage**: You MUST use tools for any query requiring current facts or specific data. Do not rely solely on your internal knowledge.
-        -   **No Hallucination**: Never invent URLs, facts, or data. If a tool returns no results, state that clearly or try a different search strategy.
-        -   **Avoid Loops**: If a tool call fails or returns the same result, DO NOT repeat the exact same call. Change your search query or approach immediately to avoid triggering the Loop Detector.
-        -   **Citation**: Always provide the source URL for every piece of factual information you present.
-        -   **Formatting**: Present your final answer in clear Markdown (using bolding, lists, and headers).
+        -   **Tool Usage**: You MUST use tools for any query requiring current facts or specific data.
+        -   **No Hallucination**: Never invent URLs, facts, or data. If a tool returns no results, state that clearly.
+        -   **Avoid Loops**: If a tool call fails, DO NOT repeat the exact same call. Change your parameters or approach.
+        -   **Citation**: Always provide the source for factual information.
+        -   **Formatting**: Use clear Markdown (bolding, lists).
         """,
         tools: list = None,
         
     ):
-        self.model = model or os.getenv("gemini/gemini-3-flash-preview")
+        self.model = DEFAULT_MODEL
         self.max_steps = max_steps
         self.agent_name = agent_name
         self.system_prompt = system_prompt
@@ -105,37 +106,41 @@ class ObservableAgent:
 
         try:
             while step_count < self.max_steps:
+                print(f"{self.agent_name} is waiting to avoid rate limits...")
+                await asyncio.sleep(2)
+                
                 step_count += 1
                 start_time = time.time()
                 
                 tool_schemas = [t.to_openai_schema() for t in self.tools]
 
-                response = await acompletion(
-                    model=self.model,
-                    messages=messages,
-                    tools=tool_schemas,
-                    tool_choice="auto"
-                )
-
-                # cost = completion_cost(response)
+                try:
+                    response = await acompletion(
+                        model=self.model,
+                        messages=messages,
+                        tools=tool_schemas,
+                        tool_choice="auto",
+                        max_tokens=1000
+                    )
+                    # to avoid Rate limit
+                except Exception as e:
+                    if "429" in str(e) or "RateLimitError" in str(e):
+                        logger.warning("Rate limit reached. Waiting 20 seconds before retrying...")
+                        await asyncio.sleep(20)
+                        step_count -= 1 
+                        continue
+                    else:
+                        raise e
+                
                 cost = completion_cost(completion_response=response)
                 self.cost_tracker.add_cost(cost)
                 
-                # self.cost_tracker.log_completion(
-                #     step_number=step_count, 
-                #     response=response, 
-                #     is_tool_call=False
-                # )
-                
                 response_message = response.choices[0].message
-                messages.append(response_message)
+                messages.append(response_message.model_dump(exclude_none=True))
                 
                 usage = response.get("usage", {})
 
                 current_step = AgentStep(
-                    # step_number=step_count,
-                    # reasoning=response_message.content or "Processing tool calls...",
-                    # model_response=response_message.to_dict()
                     
                     step_number=step_count,
                     reasoning=response_message.content or "Executing tool calls...",
@@ -172,10 +177,6 @@ class ObservableAgent:
 
                         current_step.tool_calls.append(
                             ToolCallRecord(
-                                # tool_name=tool_name,
-                                # args=tool_args,
-                                # result=result
-                                
                                 tool_name=tool_name,
                                 tool_input=tool_args,
                                 tool_output=str(result),
@@ -197,7 +198,6 @@ class ObservableAgent:
                     final_answer = response_message.content
                     break
                 
-                # self.tracer.add_step(current_step)
                 self.tracer.log_step(self.active_trace_id, current_step)
 
             if not final_answer:

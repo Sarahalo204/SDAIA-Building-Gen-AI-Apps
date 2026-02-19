@@ -52,7 +52,7 @@ class AgentTracer:
 
     def start_trace(self, agent_name: str, query: str, model: str = "") -> str:
         """Start a new trace for an agent execution."""
-        trace_id = str(uuid.uuid4())[:8]  # Short ID for readability
+        trace_id = str(uuid.uuid4())[:8]  # Short ID 
         self._traces[trace_id] = Trace(
             trace_id=trace_id,
             agent_name=agent_name,
