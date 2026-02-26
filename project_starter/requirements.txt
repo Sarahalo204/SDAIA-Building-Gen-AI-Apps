@@ -13,3 +13,4 @@ langchain-text-splitters
 ipaddress
 pdfplumber
 streamlit
+load_dotenv
